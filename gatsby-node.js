@@ -1,18 +1,13 @@
 const path = require('path');
 const fs = require('fs').promises;
 const mkdirp = require('mkdirp');
-const { Stitch, AnonymousCredential } = require('mongodb-stitch-server-sdk');
 const { validateEnvVariables } = require('./src/utils/setup/validate-env-variables');
 const { getNestedValue } = require('./src/utils/get-nested-value');
 const { getTemplate } = require('./src/utils/get-template');
 const { getGuideMetadata } = require('./src/utils/get-guide-metadata');
 const { getPageSlug } = require('./src/utils/get-page-slug');
 const { siteMetadata } = require('./src/utils/site-metadata');
-
-const DB = siteMetadata.database;
-const DOCUMENTS_COLLECTION = 'documents';
-const ASSETS_COLLECTION = 'assets';
-const METADATA_COLLECTION = 'metadata';
+const { DocumentSource, fetchDocument, fetchDocuments } = require('./src/utils/fetch-documents');
 
 const constructPageIdPrefix = ({ project, parserUser, parserBranch }) => `${project}/${parserUser}/${parserBranch}`;
 
@@ -24,7 +19,6 @@ const constructBuildFilter = ({ commitHash, ...rest }) => {
   };
 };
 
-const SNOOTY_STITCH_ID = 'snooty-koueq';
 const buildFilter = constructBuildFilter(siteMetadata);
 
 // different types of references
@@ -33,24 +27,6 @@ const GUIDES_METADATA = {};
 
 // in-memory object with key/value = filename/document
 let RESOLVED_REF_DOC_MAPPING = {};
-
-// stich client connection
-let stitchClient;
-
-const setupStitch = () => {
-  return new Promise((resolve, reject) => {
-    stitchClient = Stitch.hasAppClient(SNOOTY_STITCH_ID)
-      ? Stitch.getAppClient(SNOOTY_STITCH_ID)
-      : Stitch.initializeAppClient(SNOOTY_STITCH_ID);
-    stitchClient.auth
-      .loginWithCredential(new AnonymousCredential())
-      .then(user => {
-        console.log('logged into stitch');
-        resolve();
-      })
-      .catch(console.error);
-  });
-};
 
 const saveAssetFile = async asset => {
   return new Promise((resolve, reject) => {
@@ -69,7 +45,7 @@ const saveAssetFile = async asset => {
 const saveAssetFiles = async assets => {
   const promises = [];
   const assetQuery = { _id: { $in: assets } };
-  const assetDataDocuments = await stitchClient.callFunction('fetchDocuments', [DB, ASSETS_COLLECTION, assetQuery]);
+  const assetDataDocuments = await fetchDocuments(DocumentSource.ASSETS, assetQuery);
   assetDataDocuments.forEach(asset => {
     promises.push(saveAssetFile(asset));
   });
@@ -84,15 +60,7 @@ exports.sourceNodes = async () => {
     throw Error(envResults.message);
   }
 
-  // wait to connect to stitch
-  await setupStitch();
-
-  const documents = await stitchClient.callFunction('fetchDocuments', [DB, DOCUMENTS_COLLECTION, buildFilter]);
-
-  if (documents.length === 0) {
-    console.error('No documents matched your query.');
-    process.exit(1);
-  }
+  const documents = await fetchDocuments(DocumentSource.DOCUMENTS, buildFilter);
 
   const pageIdPrefix = constructPageIdPrefix(siteMetadata);
   documents.forEach(doc => {
@@ -122,7 +90,7 @@ exports.sourceNodes = async () => {
 
 exports.createPages = async ({ actions }) => {
   const { createPage } = actions;
-  const metadata = await stitchClient.callFunction('fetchDocument', [DB, METADATA_COLLECTION, buildFilter]);
+  const metadata = await fetchDocument(DocumentSource.METADATA, buildFilter);
 
   return new Promise((resolve, reject) => {
     PAGES.forEach(page => {
@@ -141,7 +109,7 @@ exports.createPages = async ({ actions }) => {
           context: {
             metadata,
             slug,
-            snootyStitchId: SNOOTY_STITCH_ID,
+            snootyStitchId: siteMetadata.stitchId,
             __refDocMapping: pageNodes,
             guidesMetadata: GUIDES_METADATA,
           },

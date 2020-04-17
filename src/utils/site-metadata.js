@@ -3,6 +3,8 @@ const userInfo = require('os').userInfo;
 
 const runningEnv = process.env.NODE_ENV || 'production';
 
+const SNOOTY_STITCH_ID = 'snooty-koueq';
+
 require('dotenv').config({
   path: `.env.${runningEnv}`,
 });
@@ -33,6 +35,7 @@ const siteMetadata = {
   project: process.env.GATSBY_SITE,
   snootyBranch: gitBranch,
   user: userInfo().username,
+  stitchId: SNOOTY_STITCH_ID,
 };
 
 module.exports.siteMetadata = siteMetadata;

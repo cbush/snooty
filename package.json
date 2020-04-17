@@ -76,6 +76,7 @@
     "gatsby-plugin-react-helmet": "^3.1.14",
     "highlight.js": "^9.16.2",
     "html-screen-capture-js": "^1.0.31",
+    "mingo": "^3.0.0",
     "mongodb-stitch-browser-sdk": "^4.8.0",
     "mongodb-stitch-server-sdk": "^4.7.1",
     "no-scroll": "^2.1.1",

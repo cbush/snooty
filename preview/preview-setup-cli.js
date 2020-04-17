@@ -1,17 +1,12 @@
 /* eslint-disable no-console */
-const { Stitch, AnonymousCredential } = require('mongodb-stitch-browser-sdk');
 const { validateEnvVariables } = require('../src/utils/setup/validate-env-variables');
 const { getIncludeFile } = require('./get-include-file');
 const { getNestedValue } = require('../src/utils/get-nested-value');
 const { getTemplate } = require('../src/utils/get-template');
 const { getGuideMetadata } = require('../src/utils/get-guide-metadata');
 const { getPageSlug } = require('../src/utils/get-page-slug');
-
-// Atlas DB config
-const DB = 'snooty';
-const DOCUMENTS_COLLECTION = 'documents';
-const ASSETS_COLLECTION = 'assets';
-const SNOOTY_STITCH_ID = 'snooty-koueq';
+const { fetchDocuments, DocumentSource } = require('../src/utils/fetch-documents');
+const { siteMetadata } = require('../src/utils/site-metadata');
 
 // different types of references
 const PAGES = [];
@@ -20,24 +15,6 @@ const GUIDES_METADATA = {};
 
 // in-memory object with key/value = filename/document
 const RESOLVED_REF_DOC_MAPPING = {};
-
-// stich client connection
-let stitchClient;
-
-const setupStitch = () => {
-  return new Promise(resolve => {
-    stitchClient = Stitch.hasAppClient(SNOOTY_STITCH_ID)
-      ? Stitch.getAppClient(SNOOTY_STITCH_ID)
-      : Stitch.initializeAppClient(SNOOTY_STITCH_ID);
-    stitchClient.auth
-      .loginWithCredential(new AnonymousCredential())
-      .then(() => {
-        console.log('logged into stitch');
-        resolve();
-      })
-      .catch(console.error);
-  });
-};
 
 // For each include node found in a page, set its 'children' property to be the array of include contents
 const populateIncludeNodes = nodes => {
@@ -65,13 +42,10 @@ const sourceNodes = async () => {
     throw Error(envResults.message);
   }
 
-  // wait to connect to stitch
-  await setupStitch();
-
   // start from index document
   const idPrefix = `${process.env.GATSBY_SITE}/${process.env.GATSBY_PARSER_USER}/${process.env.GATSBY_PARSER_BRANCH}`;
   const query = { _id: { $regex: new RegExp(`${idPrefix}/*`) } };
-  const documents = await stitchClient.callFunction('fetchDocuments', [DB, DOCUMENTS_COLLECTION, query]);
+  const documents = await fetchDocuments(DocumentSource.DOCUMENTS, query);
   documents.forEach(doc => {
     const { _id, ...rest } = doc;
     RESOLVED_REF_DOC_MAPPING[_id.replace(`${idPrefix}/`, '')] = rest;
@@ -105,7 +79,7 @@ export const getPageData = async () => {
       template,
       context: {
         slug,
-        snootyStitchId: SNOOTY_STITCH_ID,
+        snootyStitchId: siteMetadata.stitchId,
         __refDocMapping: pageNodes,
         guidesMetadata: GUIDES_METADATA,
       },
@@ -117,7 +91,7 @@ export const getPageData = async () => {
 // Use checksum from a Figure component to return base64 data of image
 export const getBase64Uri = async checksum => {
   const query = { _id: { $eq: checksum } };
-  const [assetData] = await stitchClient.callFunction('fetchDocuments', [DB, ASSETS_COLLECTION, query]);
+  const [assetData] = await fetchDocuments(DocumentSource.ASSETS, query);
 
   const base64 = assetData.data.buffer.toString('base64');
   const fileFormat = assetData.filename.split('.')[-1];
